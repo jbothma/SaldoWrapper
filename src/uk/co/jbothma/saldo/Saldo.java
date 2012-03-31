@@ -6,6 +6,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.util.Iterator;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MappingJsonFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class Saldo {
 	private Process saldoProcess;
@@ -25,9 +33,41 @@ public class Saldo {
 				new OutputStreamWriter(saldoProcess.getOutputStream()), 100);
 
 		// test lookup
-		outputStream.write("ord\n\n");
+		outputStream.write("alltmer\n");
 		outputStream.flush();
-		System.out.println(inputStream.readLine());
+
+		JsonFactory f = new MappingJsonFactory();
+		JsonParser jp = f.createJsonParser(inputStream);
+		//ObjectMapper mapper = new ObjectMapper();
+		JsonToken current;
+
+		current = jp.nextToken();
+		if (current != JsonToken.START_OBJECT) {
+			System.out.println("Error: root should be object: quiting.");
+		}
+		while (jp.nextToken() != JsonToken.END_OBJECT) {
+			String fieldName = jp.getCurrentName();
+			System.out.println(fieldName);
+
+			current = jp.nextToken();
+			if (current == JsonToken.START_OBJECT) {
+				// read the record into a tree model,
+				// this moves the parsing position to the end of it
+				JsonNode node = jp.readValueAsTree();
+				Iterator<String> resultKeys = node.fieldNames();
+				String resultKey;
+				while (resultKeys.hasNext()) {
+					// TODO: what does the s_ prefix mean?
+					resultKey = resultKeys.next();
+					System.out.println(resultKey);
+				}
+				
+				System.out.println(node.toString());
+			} else {
+				System.err.println("Error: records should be an array: skipping.");
+				jp.skipChildren();
+			}
+		}
 	}
 
 	/**
