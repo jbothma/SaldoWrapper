@@ -21,6 +21,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MappingJsonFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+/**
+ * TODO: more control over stderr could be nice
+ */
 public class Saldo {
 	private Process saldoProcess;
 	private Thread errorThread;
@@ -29,7 +32,7 @@ public class Saldo {
 	private BufferedWriter outputStream;
 	private BufferedReader inputStream;
 	private ObjectMapper mapper;
-	
+
 	public Saldo(String binPath, String dictPath) throws IOException,
 			InterruptedException, SaldoException {
 		ProcessBuilder pb = new ProcessBuilder(binPath, dictPath);
@@ -40,28 +43,38 @@ public class Saldo {
 
 		inputStream = new BufferedReader(new InputStreamReader(
 				saldoProcess.getInputStream()));
-		outputStream = new BufferedWriter(
-				new OutputStreamWriter(saldoProcess.getOutputStream()), 100);
+		outputStream = new BufferedWriter(new OutputStreamWriter(
+				saldoProcess.getOutputStream()), 100);
 
 		jsonFactory = new MappingJsonFactory();
 		jsonParser = jsonFactory.createJsonParser(inputStream);
 		mapper = new ObjectMapper(); // can reuse, share globally
 
 		// test lookup
-		this.getAnalysis("alltmer");
+		Word testWord = this.getAnalysis("alltmer").get(0);
+		if (!testWord.getSaldoId().equals("alltmer..ab.1"))
+			throw new SaldoException(
+					"Expected test lookup to find id alltmer..ab.1 but instead got "
+							+ testWord.getSaldoId());
 	}
 
 	/**
 	 * Print a few demos to stdout
 	 * 
 	 * @param args
-	 * @throws SaldoException 
+	 * @throws SaldoException
 	 */
 	public static void main(String[] args) throws SaldoException {
 		String binPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/sblex/bin/saldo";
 		String dictPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/dicts/saldo100.dict";
 		try {
-			(new Saldo(binPath, dictPath)).close();
+			Saldo saldo = new Saldo(binPath, dictPath);
+			System.out.println(saldo.getAnalysis("alltmer"));
+			System.out.println(saldo.getCompoundAnalysis("alltmer"));
+			// kommuner is cool because it doesn't actually occur in the
+			// dictionary file.
+			System.out.println(saldo.getAnalysis("kommuner"));
+			saldo.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		} catch (InterruptedException e) {
@@ -72,20 +85,19 @@ public class Saldo {
 	/**
 	 * Get the list of saldo results for the given word.
 	 * 
-	 * @param word to look up
+	 * @param word
+	 *            to look up
 	 * @return list of result words. Empty list implies word not found.
 	 * @throws JsonParseException
 	 * @throws JsonProcessingException
 	 * @throws IOException
 	 * @throws SaldoException
 	 * 
-	 * TODO: what does the s_ prefix mean?
-	 * It looks like s_ is a whole-word match, while c_ is compound
-	 * analysis results
-	 * e.g. for "kommunalskatt"
-	 * s_1: word:kommunalskatt id:kommunalskatt..nn.1
-	 * c_1: [word:kommunal, word:skatt]	
-	 * c_3: [word:kommun, word:al, word:skatt]
+	 * TODO: what does the s_ prefix mean? It looks like s_ is a
+	 * whole-word match, while c_ is compound analysis results e.g.
+	 * for "kommunalskatt" s_1: word:kommunalskatt
+	 * id:kommunalskatt..nn.1 c_1: [word:kommunal, word:skatt] c_3:
+	 * [word:kommun, word:al, word:skatt]
 	 */
 	public List<Word> getAnalysis(String word) throws JsonParseException,
 			JsonProcessingException, IOException, SaldoException {
@@ -99,7 +111,8 @@ public class Saldo {
 				resultKey = resultKeys.next();
 				if (resultKey.startsWith("s_")) {
 					resultNode = saldoResponse.get(resultKey);
-					Word saldoWord = mapper.readValue(resultNode.traverse(), Word.class);
+					Word saldoWord = mapper.readValue(resultNode.traverse(),
+							Word.class);
 					resultList.add(saldoWord);
 				} else {
 					continue;
@@ -109,10 +122,11 @@ public class Saldo {
 		return resultList;
 	}
 
-	public List<Word> getCompoundAnalysis(String word) throws JsonParseException,
-			JsonProcessingException, IOException, SaldoException {
+	public List<Word> getCompoundAnalysis(String word)
+			throws JsonParseException, JsonProcessingException, IOException,
+			SaldoException {
 		// TODO: This is just duplicating getAnalysis except for c_ prefix.
-		//       Duplication is baaaaad.
+		// Duplication is baaaaad.
 		JsonNode saldoResponse = plainLookup(word);
 		List<Word> resultList = new ArrayList<Word>();
 		if (saldoResponse != null) {
@@ -123,7 +137,8 @@ public class Saldo {
 				resultKey = resultKeys.next();
 				if (resultKey.startsWith("c_")) {
 					resultNode = saldoResponse.get(resultKey);
-					Word saldoWord = mapper.readValue(resultNode.traverse(), Word.class);
+					Word saldoWord = mapper.readValue(resultNode.traverse(),
+							Word.class);
 					resultList.add(saldoWord);
 				} else {
 					continue;
@@ -145,8 +160,8 @@ public class Saldo {
 	 * @throws JsonProcessingException
 	 * @throws JsonParseException
 	 */
-	private JsonNode plainLookup(String word)
-			throws JsonParseException, JsonProcessingException, IOException, SaldoException {
+	private JsonNode plainLookup(String word) throws JsonParseException,
+			JsonProcessingException, IOException, SaldoException {
 
 		outputStream.write(word + System.getProperty("line.separator"));
 		outputStream.flush();
@@ -158,15 +173,18 @@ public class Saldo {
 					jsonParser.nextToken(); // end object
 					return result;
 				} else if (jsonParser.getText().equals("-Unknown-")) {
-					System.out.println("word " + word + " unknown");
-					return null; //returning null is apparently bad, but it's a start.
+					// returning null is apparently bad, but we're dealing with
+					// JsonNodes here, not collections.
+					// The functions that return results to the outside should
+					// return empty collections.
+					return null;
 				} else {
 					throw new SaldoException("result value should be object: "
 							+ jsonParser.getCurrentToken());
 				}
 			} else {
 				throw new SaldoException("first field name should equal word: "
-							+ jsonParser.getCurrentToken());
+						+ jsonParser.getCurrentToken());
 			}
 		} else {
 			throw new SaldoException("root should be object.");
@@ -199,34 +217,4 @@ public class Saldo {
 			}
 		}
 	}
-
-	/**
-	 * Assume after one of these that the Saldo instance is unusuable and should be closed.
-	 * This is because something unexpected happened and we might not be able to
-	 * reliably process more JSON responses.
-	 * 
-	 * If we're a bit more clever about handling unexpected JSON output, we can relax this
-	 * exception.
-	 */
-	class SaldoException extends Exception {
-		String error;
-		
-		public SaldoException() {
-			this.error = "unknown";
-		}
-		
-		public SaldoException(String error) {
-			this.error = error;
-		}
-		
-		public String getError() {
-			return this.error;
-		}
-		
-		public String toString() {
-			return this.error + System.getProperty("line.separator") + super.toString(); 
-		}
-	}
-	
-
 }
