@@ -6,7 +6,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParseException;
@@ -24,6 +28,7 @@ public class Saldo {
 	private MappingJsonFactory jsonFactory;
 	private BufferedWriter outputStream;
 	private BufferedReader inputStream;
+	private ObjectMapper mapper;
 	
 	public Saldo(String binPath, String dictPath) throws IOException,
 			InterruptedException, SaldoException {
@@ -40,10 +45,10 @@ public class Saldo {
 
 		jsonFactory = new MappingJsonFactory();
 		jsonParser = jsonFactory.createJsonParser(inputStream);
+		mapper = new ObjectMapper(); // can reuse, share globally
 
 		// test lookup
 		this.getAnalysis("alltmer");
-		this.getCompoundAnalysis("alltmer");
 	}
 
 	/**
@@ -54,7 +59,7 @@ public class Saldo {
 	 */
 	public static void main(String[] args) throws SaldoException {
 		String binPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/sblex/bin/saldo";
-		String dictPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/dicts/saldo.dict";
+		String dictPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/dicts/saldo100.dict";
 		try {
 			(new Saldo(binPath, dictPath)).close();
 		} catch (IOException e) {
@@ -64,46 +69,68 @@ public class Saldo {
 		}
 	}
 
-	public void getAnalysis(String word) throws JsonParseException,
+	/**
+	 * Get the list of saldo results for the given word.
+	 * 
+	 * @param word to look up
+	 * @return list of result words. Empty list implies word not found.
+	 * @throws JsonParseException
+	 * @throws JsonProcessingException
+	 * @throws IOException
+	 * @throws SaldoException
+	 * 
+	 * TODO: what does the s_ prefix mean?
+	 * It looks like s_ is a whole-word match, while c_ is compound
+	 * analysis results
+	 * e.g. for "kommunalskatt"
+	 * s_1: word:kommunalskatt id:kommunalskatt..nn.1
+	 * c_1: [word:kommunal, word:skatt]	
+	 * c_3: [word:kommun, word:al, word:skatt]
+	 */
+	public List<Word> getAnalysis(String word) throws JsonParseException,
 			JsonProcessingException, IOException, SaldoException {
-		JsonNode saldoResult = plainLookup(word);
-		if (saldoResult != null) {
-			Iterator<String> resultKeys = saldoResult.fieldNames();
+		JsonNode saldoResponse = plainLookup(word);
+		List<Word> resultList = new ArrayList<Word>();
+		if (saldoResponse != null) {
+			Iterator<String> resultKeys = saldoResponse.fieldNames();
 			String resultKey;
+			JsonNode resultNode;
 			while (resultKeys.hasNext()) {
-				// TODO: what does the s_ prefix mean?
-				// It looks like s_ is a whole-word match, while c_ is compound
-				// analysis results
-				// e.g. for "kommunalskatt"
-				// s_1: word:kommunalskatt id:kommunalskatt..nn.1
-				// c_1: [word:kommunal, word:skatt]
-				// c_3: [word:kommun, word:al, word:skatt]
 				resultKey = resultKeys.next();
 				if (resultKey.startsWith("s_")) {
-					System.out.println(resultKey + "  "
-							+ saldoResult.get(resultKey).toString());
+					resultNode = saldoResponse.get(resultKey);
+					Word saldoWord = mapper.readValue(resultNode.traverse(), Word.class);
+					resultList.add(saldoWord);
 				} else {
 					continue;
 				}
 			}
-		} else { // word not found
 		}
+		return resultList;
 	}
 
-	public void getCompoundAnalysis(String word) throws JsonParseException,
+	public List<Word> getCompoundAnalysis(String word) throws JsonParseException,
 			JsonProcessingException, IOException, SaldoException {
-		JsonNode saldoResult = plainLookup(word);
-		Iterator<String> resultKeys = saldoResult.fieldNames();
-		String resultKey;
-		while (resultKeys.hasNext()) {
-			resultKey = resultKeys.next();
-			if (resultKey.startsWith("c_")) {
-				System.out.println(resultKey + "  "
-						+ saldoResult.get(resultKey).toString());
-			} else {
-				continue;
+		// TODO: This is just duplicating getAnalysis except for c_ prefix.
+		//       Duplication is baaaaad.
+		JsonNode saldoResponse = plainLookup(word);
+		List<Word> resultList = new ArrayList<Word>();
+		if (saldoResponse != null) {
+			Iterator<String> resultKeys = saldoResponse.fieldNames();
+			String resultKey;
+			JsonNode resultNode;
+			while (resultKeys.hasNext()) {
+				resultKey = resultKeys.next();
+				if (resultKey.startsWith("c_")) {
+					resultNode = saldoResponse.get(resultKey);
+					Word saldoWord = mapper.readValue(resultNode.traverse(), Word.class);
+					resultList.add(saldoWord);
+				} else {
+					continue;
+				}
 			}
 		}
+		return resultList;
 	}
 
 	/**
@@ -173,6 +200,14 @@ public class Saldo {
 		}
 	}
 
+	/**
+	 * Assume after one of these that the Saldo instance is unusuable and should be closed.
+	 * This is because something unexpected happened and we might not be able to
+	 * reliably process more JSON responses.
+	 * 
+	 * If we're a bit more clever about handling unexpected JSON output, we can relax this
+	 * exception.
+	 */
 	class SaldoException extends Exception {
 		String error;
 		
@@ -192,4 +227,6 @@ public class Saldo {
 			return this.error + System.getProperty("line.separator") + super.toString(); 
 		}
 	}
+	
+
 }
