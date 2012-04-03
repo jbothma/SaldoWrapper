@@ -8,7 +8,7 @@ package uk.co.jbothma.saldo;
  * If we're a bit more clever about handling unexpected JSON output, we can
  * relax this exception.
  */
-class SaldoException extends Exception {
+public class SaldoException extends Exception {
 	String error;
 
 	public SaldoException() {

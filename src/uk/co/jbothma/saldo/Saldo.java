@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.MappingJsonFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
+ * TODO: Maybe the API should be based on WordNet's???
  * TODO: more control over stderr could be nice
  */
 public class Saldo {
@@ -66,7 +67,7 @@ public class Saldo {
 	 */
 	public static void main(String[] args) throws SaldoException {
 		String binPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/sblex/bin/saldo";
-		String dictPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/dicts/saldo100.dict";
+		String dictPath = "/home/jdb/uni/uppsala/2011-2012/thesis/sw_source/FM-SBLEX_svn/dicts/saldo.saker.dict";
 		try {
 			Saldo saldo = new Saldo(binPath, dictPath);
 			System.out.println(saldo.getAnalysis("alltmer"));
@@ -74,6 +75,7 @@ public class Saldo {
 			// kommuner is cool because it doesn't actually occur in the
 			// dictionary file.
 			System.out.println(saldo.getAnalysis("kommuner"));
+			System.out.println(saldo.getAnalysis("saker"));
 			saldo.close();
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -173,10 +175,14 @@ public class Saldo {
 					jsonParser.nextToken(); // end object
 					return result;
 				} else if (jsonParser.getText().equals("-Unknown-")) {
+					jsonParser.nextToken(); // end object
 					// returning null is apparently bad, but we're dealing with
 					// JsonNodes here, not collections.
 					// The functions that return results to the outside should
 					// return empty collections.
+					return null;
+				} else if (jsonParser.getText().equals("-Symb-")) {
+					jsonParser.nextToken(); // end object
 					return null;
 				} else {
 					throw new SaldoException("result value should be object: "
